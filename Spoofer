@@ -1,0 +1,127 @@
+-- Slashsaken spoofer
+warn("[spoofer] loading...")
+
+local SA = getgenv().SA
+if not SA then warn("[spoofer] core not loaded"); return end
+local S = SA.S
+local H = SA.H
+local Tabs = SA.Tabs
+local Library = SA.Library
+local lp = SA.lp
+local ReplicatedStorage = SA.ReplicatedStorage
+local UserInputService = SA.UserInputService
+
+local function StopAllEmotes()
+    for _, track in ipairs(S.ActiveTracks) do pcall(function() track:Stop() end) end
+    if S.ActiveSound then pcall(function() S.ActiveSound:Stop(); S.ActiveSound:Destroy() end) end
+    table.clear(S.ActiveTracks); S.ActiveSound = nil
+end
+
+UserInputService.InputBegan:Connect(function(input, proc)
+    if not proc and input.KeyCode == Enum.KeyCode.Space then StopAllEmotes() end
+end)
+
+task.spawn(function()
+    while true do
+        if S.NameLoop then pcall(function() lp.Name = S.TargetName end) end
+        if S.DispLoop then
+            pcall(function()
+                lp.DisplayName = S.TargetDisp
+                if lp.Character and lp.Character:FindFirstChild("Humanoid") then lp.Character.Humanoid.DisplayName = S.TargetDisp end
+            end)
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- Unlock All
+local UnlockBox = Tabs.Spoofer:AddGroupbox({Side="Left", Name="Unlock All", IconName="unlock"})
+UnlockBox:AddButton({Text="Unlock All (killers + survivors + skins)", Func=function()
+    local data = lp:WaitForChild("PlayerData"):WaitForChild("Purchased")
+    local count = 0
+    for _, name in ipairs(S.killerList) do
+        if not data.Killers:FindFirstChild(name) then Instance.new("StringValue", data.Killers).Name = name; count = count + 1 end
+    end
+    for _, name in ipairs(S.survList) do
+        if not data.Survivors:FindFirstChild(name) then Instance.new("StringValue", data.Survivors).Name = name; count = count + 1 end
+    end
+    local skinsRoot = ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("Skins")
+    if skinsRoot then
+        for _, skin in ipairs(skinsRoot:GetDescendants()) do
+            if (skin:IsA("Folder") or skin:IsA("Model")) and not data.Skins:FindFirstChild(skin.Name) then
+                Instance.new("StringValue", data.Skins).Name = skin.Name; count = count + 1
+            end
+        end
+    end
+    Library:Notify({Title="Spoofer", Description="Unlocked "..count.." items!", Time=3})
+end})
+
+-- Emotes
+local EmoteBox = Tabs.Spoofer:AddGroupbox({Side="Right", Name="Emotes", IconName="smile"})
+EmoteBox:AddButton({Text="Unlock Every Emote", Func=function()
+    local pE = lp:WaitForChild("PlayerData"):WaitForChild("Purchased"):WaitForChild("Emotes")
+    local count = 0
+    for _, name in ipairs(S.emoteList) do
+        if not pE:FindFirstChild(name) then Instance.new("StringValue", pE).Name = name; count = count + 1 end
+    end
+    Library:Notify({Title="Spoofer", Description="Unlocked "..count.." emotes", Time=3})
+end})
+EmoteBox:AddDropdown("SP_Emote", {Values=S.emoteList, Default=1, Text="Select Emote", Callback=function(v) S.emoteToPlay=v end})
+EmoteBox:AddButton({Text="Play Selected (Space to stop)", Func=function()
+    local name = S.emoteToPlay
+    if not name or name == "" or name == "None" then return end
+    local Assets = ReplicatedStorage:FindFirstChild("Assets")
+    local emRoot = Assets and Assets:FindFirstChild("Emotes")
+    local module = emRoot and emRoot:FindFirstChild(name, true)
+    if module and module:IsA("ModuleScript") then
+        local data = require(module)
+        StopAllEmotes()
+        local char = lp.Character or lp.CharacterAdded:Wait()
+        local anims = type(data.AssetID) == "table" and data.AssetID or {data.AssetID}
+        for _, id in ipairs(anims) do
+            local a = Instance.new("Animation"); a.AnimationId = id
+            local t = char.Humanoid.Animator:LoadAnimation(a)
+            t.Priority = Enum.AnimationPriority.Action4
+            t:Play(); table.insert(S.ActiveTracks, t)
+        end
+        if data.SFX then
+            S.ActiveSound = Instance.new("Sound", char.HumanoidRootPart)
+            S.ActiveSound.SoundId = data.SFX; S.ActiveSound:Play()
+        end
+        Library:Notify({Title="Spoofer", Description="Playing "..name, Time=2})
+    end
+end})
+
+-- Stats
+local StatsBox = Tabs.Spoofer:AddGroupbox({Side="Left", Name="Stats", IconName="bar-chart"})
+for _, n in ipairs({"Money","NetWorth","KillerChance","TimePlayed","KillerWins","Kills","SurvivorWins","ObjectivesCompleted"}) do
+    StatsBox:AddInput("SP_Stat_"..n, {
+        Text="Set "..n, Default="", Placeholder="value", Numeric=true, ClearTextOnFocus=false,
+        Callback=function(t)
+            local s = lp:WaitForChild("PlayerData"):WaitForChild("Stats"):FindFirstChild(n, true)
+            if s then s.Value = tonumber(t) or 0 end
+        end,
+    })
+end
+
+-- Identity
+local IdBox = Tabs.Spoofer:AddGroupbox({Side="Right", Name="Identity Spoofers", IconName="user"})
+IdBox:AddInput("SP_TargetName", {Text="Target Username", Default="", Placeholder="username", ClearTextOnFocus=false, Callback=function(v) S.TargetName=v end})
+IdBox:AddToggle("SP_NameLoop", {Text="Set Username (client-only)", Default=false, Callback=function(v) S.NameLoop=v end})
+IdBox:AddInput("SP_TargetDisp", {Text="Target DisplayName", Default="", Placeholder="displayname", ClearTextOnFocus=false, Callback=function(v) S.TargetDisp=v end})
+IdBox:AddToggle("SP_DispLoop", {Text="Set DisplayName (client-only)", Default=false, Callback=function(v) S.DispLoop=v end})
+
+local MiscBox = Tabs.Spoofer:AddGroupbox({Side="Right", Name="Misc Spoofers", IconName="sparkles"})
+MiscBox:AddButton({Text="VIP Giver (visual only)", Func=function()
+    lp:SetAttribute("VIP", true)
+    local pD = lp:FindFirstChild("PlayerData")
+    if pD then
+        local vVal = pD:FindFirstChild("VIP", true) or Instance.new("BoolValue", pD)
+        vVal.Name = "VIP"; vVal.Value = true
+    end
+    Library:Notify({Title="Spoofer", Description="VIP given (visual)", Time=2})
+end})
+MiscBox:AddDropdown("SP_Device", {Values={"PC","Mobile","Console"}, Default="PC", Text="Device Spoofer", Callback=function(v) lp:SetAttribute("Device", v) end})
+
+SA.S.spooferLoaded = true
+warn("[spoofer] loaded OK")
